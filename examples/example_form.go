@@ -1,6 +1,9 @@
 package main
 
-import "github.com/bithavoc/goprompt"
+import (
+    "fmt"
+    "github.com/bithavoc/goprompt"
+)
 
 func main() {
     p := &goprompt.Prompt {
@@ -28,5 +31,6 @@ func main() {
             },
         },
     }
-    p.Process()
+    result := p.Process()
+    fmt.Printf("%+v\n", result)
 }

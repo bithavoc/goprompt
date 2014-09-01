@@ -7,6 +7,21 @@ import (
     "bufio"
 )
 
+type Result struct {
+    Name string
+    Value string
+    DefaultValue string
+    Children map[string]Result
+}
+
+func NewResult(name string) Result {
+    result := Result {
+        Name: name,
+        Children: make(map[string]Result),
+    }
+    return result
+}
+
 type Field struct {
     Name string
     Title string
@@ -21,10 +36,59 @@ func (field *Field)IsPending() bool {
     return field.Value == "" && field.DefaultValue == ""
 }
 
+func (field *Field) Process() Result {
+    result := NewResult(field.Name)
+    for {
+        if field.DefaultValue != "" {
+            // print prompt for optional field, includes default value
+            field.form.prompt.printf("%s(%s): ", field.Title, field.DefaultValue)
+        } else {
+            // ask for required field
+            field.form.prompt.printf("%s: ", field.Title)
+        }
+        if field.form.prompt.scanner.Scan() {
+            txt := field.form.prompt.scanner.Text()
+            field.Value = txt
+            field.prompted = true
+            result.Value = field.Value
+            if field.IsPending() {
+                // user skipped the field
+                // print help and ask for a value again
+                field.form.prompt.printfl(field.Instructions)
+
+                // iterate again in this input field loop
+                continue
+            } else {
+                // exit this input field loop
+                break
+            }
+        } else { // CONTROL-C
+            os.Exit(2)
+        }
+    } // field input loop
+    return result
+}
+
 type Form struct {
+    Name string
     Title string
     Fields []*Field
     prompt *Prompt
+}
+
+func (f *Form) Process() Result {
+    result := NewResult(f.Name)
+    for i, field := range f.Fields {
+        field.form = f
+        if field.Name == "" {
+            field.Name = fmt.Sprintf("field.%d", i)
+        }
+        if !field.prompted {
+            fieldResult :=field.Process()
+            result.Children[fieldResult.Name] = fieldResult
+        }
+    }
+    return result
 }
 
 func (f *Form) PrintIntro() {
@@ -36,6 +100,7 @@ type Prompt struct {
     Output io.Writer
     Input io.Reader
     Forms []*Form
+    scanner *bufio.Scanner
 }
 
 func (p *Prompt) GetOutput() io.Writer {
@@ -63,43 +128,18 @@ func (p *Prompt) printfl(format string, a ...interface{}) {
     p.printf(format + "\n", a...)
 }
 
-func (p *Prompt) Process() {
+func (p *Prompt) Process() Result {
+    result := NewResult("")
     input := p.GetInput()
-    for _, form:= range p.Forms {
+    p.scanner = bufio.NewScanner(input)
+    for i, form:= range p.Forms {
         form.prompt = p
-        form.PrintIntro()
-        for _, field := range form.Fields {
-            field.form = form
-            if !field.prompted {
-                scanner := bufio.NewScanner(input)
-                for {
-                    if field.DefaultValue != "" {
-                        // print prompt for optional field, includes default value
-                        p.printf("%s(%s): ", field.Title, field.DefaultValue)
-                    } else {
-                        // ask for required field
-                        p.printf("%s: ", field.Title)
-                    }
-                    if scanner.Scan() {
-                        txt := scanner.Text()
-                        field.Value = txt
-                        field.prompted = true
-                        if field.IsPending() {
-                            // user skipped the field
-                            // print help and ask for a value again
-                            p.printfl(field.Instructions)
-
-                            // iterate again in this input field loop
-                            continue
-                        } else {
-                            // exit this input field loop
-                            break
-                        }
-                    } else { // CONTROL-C
-                        os.Exit(2)
-                    }
-                } // field input loop
-            }
+        if form.Name == "" {
+            form.Name = fmt.Sprintf("form.%d", i)
         }
+        form.PrintIntro()
+        formResult := form.Process()
+        result.Children[form.Name] = formResult
     }
+    return result
 }
