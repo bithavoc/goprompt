@@ -48,9 +48,8 @@ func (field *Field) Process() Result {
         }
         if field.form.prompt.scanner.Scan() {
             txt := field.form.prompt.scanner.Text()
-            field.Value = txt
             field.prompted = true
-            result.Value = field.Value
+            field.Value = txt
             if field.IsPending() {
                 // user skipped the field
                 // print help and ask for a value again
@@ -59,6 +58,9 @@ func (field *Field) Process() Result {
                 // iterate again in this input field loop
                 continue
             } else {
+                if field.Value == "" {
+                    field.Value = field.DefaultValue
+                }
                 // exit this input field loop
                 break
             }
@@ -66,6 +68,7 @@ func (field *Field) Process() Result {
             os.Exit(2)
         }
     } // field input loop
+    result.Value = field.Value
     return result
 }
 
