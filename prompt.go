@@ -5,6 +5,7 @@ import (
     "os"
     "io"
     "bufio"
+    "strings"
 )
 
 type Result struct {
@@ -30,44 +31,85 @@ type Field struct {
     form *Form
     Instructions string
     prompted bool
+    Shorthand string
 }
 
 func (field *Field)IsPending() bool {
-    return field.Value == "" && field.DefaultValue == ""
+    return field.Value == ""
+}
+
+func (field *Field)ShouldPrompt() bool {
+    return field.IsPending() && field.DefaultValue != ""
+}
+
+func (field *Field)Prepare(args []string) {
+    var longArgName, shortArgName string
+    if field.Name != "" {
+        longArgName = fmt.Sprintf("--%s", field.Name)
+    }
+    if field.Shorthand != "" {
+        shortArgName = fmt.Sprintf("-%s", field.Shorthand)
+    }
+
+    for i, rawArg := range args {
+        targ := strings.Trim(rawArg, " ")
+
+        var foundName string
+        if longArgName != "" && strings.HasPrefix(targ, longArgName) {
+            foundName = longArgName
+        } else if shortArgName != "" && strings.HasPrefix(targ, shortArgName) {
+            foundName = shortArgName
+        }
+        if foundName == "" {
+            continue
+        }
+        expectingNextValue := len(targ) == len(foundName)
+        var value string
+        if(expectingNextValue) {
+            value = args[i+1]
+        } else {
+            if valueSeparator := strings.Index(targ, "="); valueSeparator > -1 {
+                value = targ[valueSeparator+1:]
+            }
+        }
+        field.Value = value
+    }
 }
 
 func (field *Field) Process() Result {
     result := NewResult(field.Name)
-    for {
-        if field.DefaultValue != "" {
-            // print prompt for optional field, includes default value
-            field.form.prompt.printf("%s(%s): ", field.Title, field.DefaultValue)
-        } else {
-            // ask for required field
-            field.form.prompt.printf("%s: ", field.Title)
-        }
-        if field.form.prompt.scanner.Scan() {
-            txt := field.form.prompt.scanner.Text()
-            field.prompted = true
-            field.Value = txt
-            if field.IsPending() {
-                // user skipped the field
-                // print help and ask for a value again
-                field.form.prompt.printfl(field.Instructions)
-
-                // iterate again in this input field loop
-                continue
+    if field.IsPending() {
+        for {
+            if field.DefaultValue != "" {
+                // print prompt for optional field, includes default value
+                field.form.prompt.printf("%s(%s): ", field.Title, field.DefaultValue)
             } else {
-                if field.Value == "" {
-                    field.Value = field.DefaultValue
-                }
-                // exit this input field loop
-                break
+                // ask for required field
+                field.form.prompt.printf("%s: ", field.Title)
             }
-        } else { // CONTROL-C
-            os.Exit(2)
-        }
-    } // field input loop
+            if field.form.prompt.scanner.Scan() {
+                txt := field.form.prompt.scanner.Text()
+                field.prompted = true
+                field.Value = txt
+                if field.ShouldPrompt() {
+                    // user skipped the field
+                    // print help and ask for a value again
+                    field.form.prompt.printfl(field.Instructions)
+
+                    // iterate again in this input field loop
+                    continue
+                } else {
+                    // exit this input field loop
+                    break
+                }
+            } else { // CONTROL-C
+                os.Exit(2)
+            }
+        } // field input loop
+    }
+    if field.Value == "" {
+        field.Value = field.DefaultValue
+    }
     result.Value = field.Value
     return result
 }
@@ -79,8 +121,14 @@ type Form struct {
     prompt *Prompt
 }
 
-func (f *Form) Process() Result {
+func (f *Form) Process(args []string) Result {
     result := NewResult(f.Name)
+
+    for _, field := range f.Fields {
+        field.Prepare(args)
+    }
+
+    // process
     for i, field := range f.Fields {
         field.form = f
         if field.Name == "" {
@@ -131,7 +179,7 @@ func (p *Prompt) printfl(format string, a ...interface{}) {
     p.printf(format + "\n", a...)
 }
 
-func (p *Prompt) Process() Result {
+func (p *Prompt) Process(args []string) Result {
     result := NewResult("")
     input := p.GetInput()
     p.scanner = bufio.NewScanner(input)
@@ -141,7 +189,7 @@ func (p *Prompt) Process() Result {
             form.Name = fmt.Sprintf("form.%d", i)
         }
         form.PrintIntro()
-        formResult := form.Process()
+        formResult := form.Process(args)
         result.Children[form.Name] = formResult
     }
     return result

@@ -3,6 +3,7 @@ package main
 import (
     "fmt"
     "github.com/bithavoc/goprompt"
+    "os"
 )
 
 func main() {
@@ -31,6 +32,6 @@ func main() {
             },
         },
     }
-    result := p.Process()
+    result := p.Process(os.Args[1:])
     fmt.Printf("%+v\n", result)
 }
