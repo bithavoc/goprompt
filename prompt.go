@@ -80,6 +80,7 @@ func (field *Field) Process() Result {
     result := NewResult(field.Name)
     if field.IsPending() {
         for {
+            field.form.EnsurePrintIntro()
             if field.DefaultValue != "" {
                 // print prompt for optional field, includes default value
                 field.form.prompt.printf("%s(%s): ", field.Title, field.DefaultValue)
@@ -119,6 +120,14 @@ type Form struct {
     Title string
     Fields []*Field
     prompt *Prompt
+    introPrinted bool
+}
+
+func (f *Form) EnsurePrintIntro() {
+    if !f.introPrinted {
+        f.PrintIntro()
+        f.introPrinted = true
+    }
 }
 
 func (f *Form) Process(args []string) Result {
@@ -188,7 +197,6 @@ func (p *Prompt) Process(args []string) Result {
         if form.Name == "" {
             form.Name = fmt.Sprintf("form.%d", i)
         }
-        form.PrintIntro()
         formResult := form.Process(args)
         result.Children[form.Name] = formResult
     }

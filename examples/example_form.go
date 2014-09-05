@@ -15,6 +15,7 @@ func main() {
                     {
                         Name: "email",
                         Title: "Email",
+                        Shorthand: "e",
                         Instructions: "Please enter your Email",
                     },
                     {
